@@ -4,6 +4,8 @@ from datetime import datetime
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 import time
+import argparse
+import cmd
 
 # Extraire les métadonnées d'un fichier
 def get_metadata(file_path):
@@ -42,7 +44,7 @@ class ModException(Exception):
     pass
 
 # Gestionnaire d'événements pour watchdog
-class DirMonitor(FileSystemEventHandler):
+class Monitor(FileSystemEventHandler):
     def __init__(self, directory, csv_path):
         self.directory = directory
         self.csv_path = csv_path
@@ -70,7 +72,7 @@ class DirMonitor(FileSystemEventHandler):
     def update_metadata(self):
         metadata = scan_dir(self.directory)
         write_csv(metadata, self.csv_path)
-        print(f"données mises à jour dans {self.csv_path}")
+        print(f"Données à jour dans le csv")
 
     def log_event_type(self, file_path, event_type):
         current_time = time.time()
@@ -83,20 +85,57 @@ class DirMonitor(FileSystemEventHandler):
         elif event_type == "creation":
             self.recent_creations[file_path] = current_time
         message = f"{event_type} du fichier: {os.path.basename(file_path)}"
-        print(message)
         log_event(message)
 
-if __name__ == "__main__":
-    directory = r'C:\Users\tonyt\OneDrive\Bureau\trucs\observation'
-    metadata = scan_dir(directory)
-    csv_path = r'C:\Users\tonyt\OneDrive - EPHEC asbl\2324\devII\aout_app\metadata.csv'
-    write_csv(metadata, csv_path)
-    print(f"données écrites dans {csv_path}")
+class Shell(cmd.Cmd):
+    intro = "\nCréation ou suppression de fichier dans le directory. 'help' pour les commandes.\n\n"
+    prompt = "--> "
 
-    event_handler = DirMonitor(directory, csv_path)
+    def __init__(self, directory, csv_path):
+        super().__init__()
+        self.directory = directory
+        self.csv_path = csv_path
+
+    def do_create(self, arg):
+        "Créer un fichier: create <nom_du_fichier>"
+        file_path = os.path.join(self.directory, arg)
+        with open(file_path, 'w') as f:
+            f.write('')
+        print(f"Fichier créé: {os.path.basename(file_path)}")
+
+    def do_delete(self, arg):
+        "Supprimer un fichier: delete <nom_du_fichier>"
+        file_path = os.path.join(self.directory, arg)
+        if os.path.exists(file_path):
+            os.remove(file_path)
+            print(f"Fichier supprimé: {os.path.basename(file_path)}")
+        else:
+            print(f"Fichier non trouvé: {os.path.basename(file_path)}")
+
+    def do_exit(self, arg):
+        "Quitter l'app"
+        print("=====================================")
+        return True
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Surveille un répertoire et met à jour un fichier CSV avec les données des fichiers.")
+    parser.add_argument("--directory", help="Le répertoire à surveiller", default=r'C:\Users\tonyt\OneDrive\Bureau\trucs\observation')
+    parser.add_argument("--csv_path", help="Le chemin du fichier CSV pour stocker les données", default=r'C:\Users\tonyt\OneDrive - EPHEC asbl\2324\devII\aout_app\metadata.csv')
+
+    args = parser.parse_args()
+
+    directory = args.directory
+    metadata = scan_dir(directory)
+    csv_path = args.csv_path
+    write_csv(metadata, csv_path)
+
+    event_handler = Monitor(directory, csv_path)
     observer = Observer()
     observer.schedule(event_handler, path=directory, recursive=True)
     observer.start()
+
+    shell = Shell(directory, csv_path)
+    shell.cmdloop()
 
     try:
         while True:
