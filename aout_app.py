@@ -46,10 +46,10 @@ class ModException(Exception):
 # Gestionnaire d'événements pour watchdog
 class Monitor(FileSystemEventHandler):
     def __init__(self, directory, csv_path):
-        self.directory = directory
-        self.csv_path = csv_path
-        self.recent_mods = {}
-        self.recent_creations = {}
+        self._directory = directory
+        self._csv_path = csv_path
+        self._recent_mods = {}
+        self._recent_creations = {}
 
     def on_modified(self, event):
         if not event.is_directory:
@@ -70,20 +70,20 @@ class Monitor(FileSystemEventHandler):
             self.update_metadata()
 
     def update_metadata(self):
-        metadata = scan_dir(self.directory)
-        write_csv(metadata, self.csv_path)
+        metadata = scan_dir(self._directory)
+        write_csv(metadata, self._csv_path)
         print(f"Données à jour dans le csv")
 
     def log_event_type(self, file_path, event_type):
         current_time = time.time()
         if event_type == "modification":
-            if file_path in self.recent_creations and current_time - self.recent_creations[file_path] <= 2:
+            if file_path in self._recent_creations and current_time - self._recent_creations[file_path] <= 2:
                 raise ModException()
-            if file_path in self.recent_mods and current_time - self.recent_mods[file_path] <= 2:
+            if file_path in self._recent_mods and current_time - self._recent_mods[file_path] <= 2:
                 raise ModException()
-            self.recent_mods[file_path] = current_time
+            self._recent_mods[file_path] = current_time
         elif event_type == "creation":
-            self.recent_creations[file_path] = current_time
+            self._recent_creations[file_path] = current_time
         message = f"{event_type} du fichier: {os.path.basename(file_path)}"
         log_event(message)
 
@@ -93,30 +93,62 @@ class Shell(cmd.Cmd):
 
     def __init__(self, directory, csv_path):
         super().__init__()
-        self.directory = directory
-        self.csv_path = csv_path
+        self._directory = directory
+        self._csv_path = csv_path
+
+    def pre_create(self, file_path):
+        if os.path.exists(file_path):
+            print(f"Erreur: Le fichier {os.path.basename(file_path)} existe déjà.")
+            return False
+        return True
+
+    def post_create(self, file_path):
+        print(f"Fichier créé: {os.path.basename(file_path)}")
+
+    def pre_delete(self, file_path):
+        if not os.path.exists(file_path):
+            print(f"Erreur: Le fichier {os.path.basename(file_path)} n'existe pas.")
+            return False
+        return True
+
+    def post_delete(self, file_path):
+        print(f"Fichier supprimé: {os.path.basename(file_path)}")
 
     def do_create(self, arg):
         "Créer un fichier: create <nom_du_fichier>"
-        file_path = os.path.join(self.directory, arg)
-        with open(file_path, 'w') as f:
-            f.write('')
-        print(f"Fichier créé: {os.path.basename(file_path)}")
+        file_path = os.path.join(self._directory, arg)
+        if self.pre_create(file_path):
+            with open(file_path, 'w') as f:
+                f.write('')
+            self.post_create(file_path)
 
     def do_delete(self, arg):
         "Supprimer un fichier: delete <nom_du_fichier>"
-        file_path = os.path.join(self.directory, arg)
-        if os.path.exists(file_path):
+        file_path = os.path.join(self._directory, arg)
+        if self.pre_delete(file_path):
             os.remove(file_path)
-            print(f"Fichier supprimé: {os.path.basename(file_path)}")
-        else:
-            print(f"Fichier non trouvé: {os.path.basename(file_path)}")
+            self.post_delete(file_path)
 
     def do_exit(self, arg):
         "Quitter l'app"
         print("=====================================")
         return True
 
+class FileWriter(Shell):
+    def do_create(self, arg):
+        "Créer un fichier avec contenu: create <nom_du_fichier> [contenu]"
+        parts = arg.split(' ', 1)
+        if len(parts) == 2:
+            file_name, content = parts
+        else:
+            file_name = parts[0]
+            content = ""
+        file_path = os.path.join(self._directory, file_name)
+        if self.pre_create(file_path):
+            with open(file_path, 'w') as f:
+                f.write(content)
+            self.post_create(file_path)
+            
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Surveille un répertoire et met à jour un fichier CSV avec les données des fichiers.")
     parser.add_argument("--directory", help="Le répertoire à surveiller", default=r'C:\Users\tonyt\OneDrive\Bureau\trucs\observation')
@@ -134,7 +166,7 @@ if __name__ == "__main__":
     observer.schedule(event_handler, path=directory, recursive=True)
     observer.start()
 
-    shell = Shell(directory, csv_path)
+    shell = FileWriter(directory, csv_path)
     shell.cmdloop()
 
     try:
