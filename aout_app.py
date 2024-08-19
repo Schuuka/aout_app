@@ -9,6 +9,15 @@ import cmd
 
 # Extraire les métadonnées d'un fichier
 def get_metadata(file_path):
+    """
+    Extrait les métadonnées d'un fichier.
+
+    PRE:
+    - `file_path` est une chaîne représentant le chemin du fichier.
+
+    POST:
+    - Retourne un dictionnaire contenant les métadonnées du fichier.
+    """
     stat = os.stat(file_path)
     return {
         'name': os.path.basename(file_path),
@@ -19,6 +28,15 @@ def get_metadata(file_path):
 
 # Parcourir un répertoire et extraire les métadonnées des fichiers
 def scan_dir(directory):
+    """
+    Parcourt un répertoire et extrait les métadonnées des fichiers.
+
+    PRE:
+    - `directory` est une chaîne représentant le chemin du répertoire.
+
+    POST:
+    - Retourne une liste contenant les métadonnées des fichiers.
+    """
     metadata = []
     for root, _, files in os.walk(directory):
         for file in files:
@@ -28,6 +46,16 @@ def scan_dir(directory):
 
 # Écrire les métadonnées dans un fichier CSV
 def write_csv(metadata, csv_path):
+    """
+    Écrit les métadonnées dans un fichier CSV.
+
+    PRE:
+    - `metadata` est une liste de dictionnaires contenant les métadonnées des fichiers.
+    - `csv_path` est une chaîne représentant le chemin du fichier CSV.
+
+    POST:
+    - Les métadonnées sont écrites dans le fichier CSV.
+    """
     with open(csv_path, mode='w', newline='', encoding='utf-8') as csv_file:
         fieldnames = ['name', 'creation_time', 'modification_time', 'size']
         writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
@@ -37,6 +65,15 @@ def write_csv(metadata, csv_path):
 
 # Journaliser les événements
 def log_event(message):
+    """
+    Journalise un événement dans un fichier de log.
+
+    PRE:
+    - `message` est une chaîne représentant le message à journaliser.
+
+    POST:
+    - Le message est ajouté au fichier de log avec un horodatage.
+    """
     with open("event_log.txt", "a") as log_file:
         log_file.write(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - {message}\n")
 
@@ -46,12 +83,36 @@ class ModException(Exception):
 # Gestionnaire d'événements pour watchdog
 class Monitor(FileSystemEventHandler):
     def __init__(self, directory, csv_path):
+        """
+        Initialise un gestionnaire d'événements pour surveiller un répertoire.
+        
+        PRE:
+        - `directory`: chemin du répertoire à surveiller.
+        - `csv_path`: chemin du fichier CSV pour stocker les métadonnées.
+        
+        POST:
+        - Gestionnaire d'événements initialisé pour surveiller les modifications dans le répertoire.
+        """
         self._directory = directory
         self._csv_path = csv_path
         self._recent_mods = {}
         self._recent_creations = {}
 
     def on_modified(self, event):
+        """
+        Gère les événements de modification de fichier.
+
+        PRE:
+        - `event` est un événement de modification de fichier.
+
+        POST:
+        - Les métadonnées sont mises à jour si le fichier a été modifié.
+
+        #Exception: ModException
+        # Gestion de l'exception ModException
+        # Si une modification est détectée trop rapidement après une création ou une autre modification,
+        # l'exception est levée et l'événement est ignoré.
+        """
         if not event.is_directory:
             try:
                 self.log_event_type(event.src_path, "modification")
@@ -60,21 +121,58 @@ class Monitor(FileSystemEventHandler):
                 pass
 
     def on_created(self, event):
+        """
+        Gère les événements de création de fichier.
+
+        PRE:
+        - `event` est un événement de création de fichier.
+
+        POST:
+        - Les métadonnées sont mises à jour si un fichier a été créé.
+        """
         if not event.is_directory:
             self.log_event_type(event.src_path, "creation")
             self.update_metadata()
 
     def on_deleted(self, event):
+        """
+        Gère les événements de suppression de fichier.
+
+        PRE:
+        - `event` est un événement de suppression de fichier.
+
+        POST:
+        - Les métadonnées sont mises à jour si un fichier a été supprimé.
+        """
         if not event.is_directory:
             self.log_event_type(event.src_path, "suppression")
             self.update_metadata()
 
     def update_metadata(self):
+        """
+        Met à jour les métadonnées des fichiers dans le répertoire surveillé.
+
+        PRE:
+        - Le répertoire surveillé contient des fichiers.
+
+        POST:
+        - Les métadonnées des fichiers sont mises à jour dans le fichier CSV.
+        """
         metadata = scan_dir(self._directory)
         write_csv(metadata, self._csv_path)
         print(f"Données à jour dans le csv")
 
     def log_event_type(self, file_path, event_type):
+        """
+        Journalise le type d'événement pour un fichier.
+
+        PRE:
+        - `file_path` est une chaîne représentant le chemin du fichier.
+        - `event_type` est une chaîne représentant le type d'événement (modification, création, suppression).
+
+        POST:
+        - L'événement est journalisé avec un horodatage.
+        """
         current_time = time.time()
         if event_type == "modification":
             if file_path in self._recent_creations and current_time - self._recent_creations[file_path] <= 2:
@@ -92,6 +190,16 @@ class Shell(cmd.Cmd):
     prompt = "--> "
 
     def __init__(self, directory, csv_path):
+        """
+        Initialise une instance de Shell pour gérer les commandes de création et suppression de fichiers.
+
+        PRE:
+        - `directory` est une chaîne représentant le chemin du répertoire à surveiller.
+        - `csv_path` est une chaîne représentant le chemin du fichier CSV pour stocker les métadonnées.
+
+        POST:
+        - Une instance de Shell est initialisée pour gérer les commandes.
+        """
         super().__init__()
         self._directory = directory
         self._csv_path = csv_path
@@ -115,7 +223,15 @@ class Shell(cmd.Cmd):
         print(f"Fichier supprimé: {os.path.basename(file_path)}")
 
     def do_create(self, arg):
-        "Créer un fichier: create <nom_du_fichier>"
+        """
+        Crée un fichier.
+
+        PRE:
+        - `arg` est une chaîne représentant le nom du fichier à créer.
+
+        POST:
+        - Le fichier est créé si les préconditions sont remplies.
+        """
         file_path = os.path.join(self._directory, arg)
         if self.pre_create(file_path):
             with open(file_path, 'w') as f:
@@ -123,20 +239,44 @@ class Shell(cmd.Cmd):
             self.post_create(file_path)
 
     def do_delete(self, arg):
-        "Supprimer un fichier: delete <nom_du_fichier>"
+        """
+        Supprime un fichier.
+
+        PRE:
+        - `arg` est une chaîne représentant le nom du fichier à supprimer.
+
+        POST:
+        - Le fichier est supprimé si les préconditions sont remplies.
+        """
         file_path = os.path.join(self._directory, arg)
         if self.pre_delete(file_path):
             os.remove(file_path)
             self.post_delete(file_path)
 
     def do_exit(self, arg):
-        "Quitter l'app"
+        """
+        Quitte l'application.
+
+        PRE:
+        - Aucune.
+
+        POST:
+        - L'application est terminée.
+        """
         print("=====================================")
         return True
 
 class FileWriter(Shell):
     def do_create(self, arg):
-        "Créer un fichier avec contenu: create <nom_du_fichier> [contenu]"
+        """
+        Crée un fichier avec contenu.
+
+        PRE:
+        - `arg` est une chaîne représentant le nom du fichier et le contenu à écrire.
+
+        POST:
+        - Le fichier est créé avec le contenu spécifié si les préconditions sont remplies.
+        """
         parts = arg.split(' ', 1)
         if len(parts) == 2:
             file_name, content = parts
@@ -148,7 +288,7 @@ class FileWriter(Shell):
             with open(file_path, 'w') as f:
                 f.write(content)
             self.post_create(file_path)
-            
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Surveille un répertoire et met à jour un fichier CSV avec les données des fichiers.")
     parser.add_argument("--directory", help="Le répertoire à surveiller", default=r'C:\Users\tonyt\OneDrive\Bureau\trucs\observation')
